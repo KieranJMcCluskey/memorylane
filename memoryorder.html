@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memory Order</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: #f5ece0;
+      background-image:
+        radial-gradient(ellipse at 20% 15%, rgba(255,225,170,0.55) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 85%, rgba(210,170,120,0.45) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 30%, rgba(240,215,175,0.30) 0%, transparent 45%),
+        repeating-linear-gradient(0deg,   transparent, transparent 39px, rgba(180,140,90,0.06) 39px, rgba(180,140,90,0.06) 40px),
+        repeating-linear-gradient(90deg,  transparent, transparent 39px, rgba(180,140,90,0.06) 39px, rgba(180,140,90,0.06) 40px);
+      background-attachment: fixed;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: #3a2a1a;
+      min-height: 100vh;
+      padding: 1.25rem 1rem 3rem;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 38px;
+      color: #6b3d1e;
+      text-shadow: 0 2px 6px rgba(107,61,30,0.18);
+      margin-bottom: 3px;
+      letter-spacing: 1px;
+    }
+
+    .cafe-tagline {
+      text-align: center;
+      font-size: 12px;
+      color: #a07850;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      margin-bottom: 0.9rem;
+    }
+
+    /* ── Status bar ── */
+    .status-wrap {
+      max-width: 520px;
+      margin: 0 auto 0.6rem;
+    }
+
+    .status {
+      text-align: center;
+      font-size: 20px;
+      color: #5a3520;
+      background: rgba(255,248,235,0.85);
+      border: 1px solid rgba(196,152,106,0.35);
+      border-radius: 12px;
+      padding: 0.55rem 1.25rem;
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.35;
+    }
+
+    /* ── Timer bar ── */
+    .timer-wrap {
+      width: 480px;
+      max-width: 95vw;
+      height: 10px;
+      background: rgba(196,152,106,0.18);
+      border-radius: 5px;
+      margin: 0 auto 1.1rem;
+      overflow: hidden;
+    }
+    .timer-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #c4986a, #8b5e3c);
+      border-radius: 5px;
+    }
+
+    /* ── Section labels ── */
+    .section-label {
+      text-align: center;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #b09070;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── Card grids ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 110px);
+      gap: 10px;
+      width: fit-content;
+      margin: 0 auto;
+    }
+
+    /* ── Sequence cards (top) ── */
+    .seq-card {
+      width: 110px;
+      height: 110px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      user-select: none;
+      transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
+    }
+
+    .seq-card.face-down {
+      background: linear-gradient(135deg, #e8d5b8 0%, #d4b896 100%);
+      border: 2px solid #c4986a;
+      box-shadow: 0 3px 8px rgba(120,80,30,0.18);
+    }
+
+    .seq-card.inactive {
+      background: linear-gradient(135deg, #ede0d0 0%, #dfd0bc 100%);
+      border: 2px solid #d8c0a0;
+      box-shadow: 0 2px 5px rgba(120,80,30,0.10);
+      opacity: 0.55;
+    }
+
+    .seq-card.face-up {
+      background: linear-gradient(135deg, #fffaf3 0%, #f8eedd 100%);
+      border: 2px solid #c4986a;
+      box-shadow: 0 4px 12px rgba(120,80,30,0.22);
+      animation: popIn 0.3s ease-out;
+    }
+
+    .seq-card.confirmed {
+      background: linear-gradient(135deg, #d4edca 0%, #b8dca8 100%);
+      border-color: #6a9e55;
+      box-shadow: 0 3px 10px rgba(60,120,40,0.22);
+      animation: popIn 0.25s ease-out;
+    }
+
+    @keyframes popIn {
+      0%   { transform: scale(0.88); opacity: 0.5; }
+      70%  { transform: scale(1.04); }
+      100% { transform: scale(1);    opacity: 1;   }
+    }
+
+    .seq-card .pos-number {
+      font-size: 30px;
+      font-weight: bold;
+      color: #b09070;
+      line-height: 1;
+    }
+
+    .seq-card .emoji {
+      font-size: 52px;
+      line-height: 1;
+    }
+
+    /* small badge showing position during reveal */
+    .seq-card .seq-badge {
+      position: absolute;
+      top: 5px;
+      left: 7px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #8b5e3c;
+      background: rgba(255,248,235,0.9);
+      border-radius: 7px;
+      padding: 1px 5px;
+      font-family: Arial, sans-serif;
+    }
+
+    /* ── Divider ── */
+    .section-divider {
+      width: 480px;
+      max-width: 95vw;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(196,152,106,0.35), transparent);
+      margin: 1rem auto;
+    }
+
+    /* ── Answer cards (bottom) ── */
+    .ans-card {
+      width: 110px;
+      height: 110px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 54px;
+      user-select: none;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.25s, border-color 0.25s, opacity 0.2s;
+      background: linear-gradient(135deg, #fffaf3 0%, #f8eedd 100%);
+      border: 2px solid #c4986a;
+      box-shadow: 0 3px 8px rgba(120,80,30,0.18);
+      cursor: pointer;
+    }
+
+    .ans-card:hover:not(.disabled):not(.correct):not(.wrong) {
+      transform: translateY(-4px);
+      box-shadow: 0 7px 18px rgba(120,80,30,0.28);
+    }
+
+    .ans-card:active:not(.disabled) {
+      transform: translateY(-1px);
+    }
+
+    .ans-card.disabled {
+      opacity: 0.55;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .ans-card.correct {
+      background: linear-gradient(135deg, #d4edca 0%, #b8dca8 100%);
+      border-color: #6a9e55;
+      box-shadow: 0 3px 10px rgba(60,120,40,0.22);
+      cursor: default;
+      pointer-events: none;
+      animation: popIn 0.25s ease-out;
+    }
+
+    .ans-card.wrong {
+      background: linear-gradient(135deg, #f5cfc5 0%, #e8a898 100%);
+      border-color: #c05040;
+      box-shadow: 0 3px 10px rgba(180,60,40,0.25);
+      animation: shake 0.4s ease-out;
+    }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
+    }
+
+    /* ── Overlay screens ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(245,236,224,0.95);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      backdrop-filter: blur(2px);
+    }
+    .overlay.visible { display: flex; }
+
+    .overlay .ov-icon { font-size: 3.5rem; margin-bottom: 0.75rem; }
+
+    .overlay h2 {
+      font-size: 40px;
+      color: #6b3d1e;
+      margin-bottom: 0.6rem;
+    }
+
+    .overlay p {
+      font-size: 19px;
+      color: #8b5e3c;
+      margin-bottom: 1.5rem;
+      max-width: 400px;
+      line-height: 1.65;
+    }
+
+    .overlay .round-reached {
+      font-size: 15px;
+      color: #a07850;
+      margin-top: -1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .btn-play {
+      background: linear-gradient(135deg, #8b5e3c, #6b3d1e);
+      color: #fff8ee;
+      border: none;
+      padding: 16px 52px;
+      font-size: 20px;
+      font-family: Georgia, serif;
+      font-weight: bold;
+      border-radius: 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 14px rgba(107,61,30,0.3);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-play:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 7px 20px rgba(107,61,30,0.35);
+    }
+
+    /* ── Round badge ── */
+    .round-badge {
+      display: inline-block;
+      background: rgba(196,152,106,0.18);
+      border: 1px solid rgba(196,152,106,0.4);
+      border-radius: 20px;
+      padding: 2px 14px;
+      font-size: 13px;
+      color: #a07850;
+      letter-spacing: 1px;
+      margin-bottom: 0.4rem;
+      font-family: Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>☕ Memory Order ☕</h1>
+  <p class="cafe-tagline">Forget Me No Memory Café</p>
+
+  <div class="status-wrap">
+    <div class="round-badge" id="roundBadge">Round 1 of 8</div>
+    <div class="status" id="status">Get ready...</div>
+  </div>
+
+  <div class="timer-wrap">
+    <div class="timer-bar" id="timerBar"></div>
+  </div>
+
+  <p class="section-label">Remember the order</p>
+  <div class="card-grid" id="seqGrid"></div>
+
+  <div class="section-divider"></div>
+
+  <p class="section-label" id="ansLabel">Choose below</p>
+  <div class="card-grid" id="ansGrid"></div>
+
+
+  <!-- ── Start overlay ── -->
+  <div class="overlay visible" id="startOverlay">
+    <div class="ov-icon">☕</div>
+    <h2>Memory Order</h2>
+    <p>Watch the top cards reveal their pictures, then tap the matching cards below <em>in the same order</em>. Each round adds one more card to remember!</p>
+    <button class="btn-play" onclick="startGame()">Let's Play!</button>
+  </div>
+
+  <!-- ── Game over overlay ── -->
+  <div class="overlay" id="gameOverOverlay">
+    <div class="ov-icon">🌸</div>
+    <h2>Not quite!</h2>
+    <p id="gameOverMsg">Don't worry, give it another go!</p>
+    <button class="btn-play" onclick="startGame()">Play Again</button>
+  </div>
+
+  <!-- ── Win overlay ── -->
+  <div class="overlay" id="winOverlay">
+    <div class="ov-icon">🎉</div>
+    <h2>Wonderful!</h2>
+    <p>You remembered all 8 cards in the right order. That's amazing!</p>
+    <button class="btn-play" onclick="startGame()">Play Again</button>
+  </div>
+
+
+  <script>
+    const EMOJIS = ['🔑', '☕️', '🌙', '⚽️', '🍰', '🚗', '🏠', '🌍'];
+    const TIMER_MS = 20000;
+
+    let sequence    = [];   // shuffled order of the 8 emojis shown in top row
+    let answerOrder = [];   // shuffled order of the 8 emojis in bottom row
+    let currentRound    = 1;
+    let selectionIndex  = 0;
+    let gamePhase = 'idle'; // idle | reveal | select | over | win
+    let timerRAF  = null;
+
+
+    /* ════════════════════════════════
+       UTILITIES
+    ════════════════════════════════ */
+
+    function shuffle(arr) {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    function setRoundBadge(r) {
+      document.getElementById('roundBadge').textContent = `Round ${r} of 8`;
+    }
+
+    function hideAllOverlays() {
+      ['startOverlay','gameOverOverlay','winOverlay'].forEach(id =>
+        document.getElementById(id).classList.remove('visible')
+      );
+    }
+
+
+    /* ════════════════════════════════
+       TIMER
+    ════════════════════════════════ */
+
+    function startTimer(onComplete) {
+      stopTimer();
+      const bar   = document.getElementById('timerBar');
+      const start = Date.now();
+      bar.style.transition = 'none';
+      bar.style.width = '100%';
+
+      function tick() {
+        const pct = Math.max(0, 1 - (Date.now() - start) / TIMER_MS);
+        bar.style.width = (pct * 100) + '%';
+        if (pct > 0) {
+          timerRAF = requestAnimationFrame(tick);
+        } else {
+          onComplete();
+        }
+      }
+      timerRAF = requestAnimationFrame(tick);
+    }
+
+    function stopTimer() {
+      if (timerRAF) { cancelAnimationFrame(timerRAF); timerRAF = null; }
+    }
+
+    function resetTimerBar() {
+      stopTimer();
+      const bar = document.getElementById('timerBar');
+      bar.style.transition = 'none';
+      bar.style.width = '0%';
+    }
+
+
+    /* ════════════════════════════════
+       RENDER
+    ════════════════════════════════ */
+
+    function renderSeqGrid() {
+      const grid = document.getElementById('seqGrid');
+      grid.innerHTML = '';
+      for (let i = 0; i < 8; i++) {
+        const card = document.createElement('div');
+        card.id = `seq-${i}`;
+        // Cards in this round: face-down. Cards beyond this round: inactive.
+        card.className = i < currentRound ? 'seq-card face-down' : 'seq-card inactive';
+        card.innerHTML = `<span class="pos-number">${i + 1}</span>`;
+        grid.appendChild(card);
+      }
+    }
+
+    function renderAnsGrid() {
+      const grid = document.getElementById('ansGrid');
+      grid.innerHTML = '';
+      answerOrder.forEach((emoji) => {
+        const card = document.createElement('div');
+        card.className = 'ans-card disabled';
+        card.dataset.emoji = emoji;
+        card.textContent = emoji;
+        card.addEventListener('click', () => handleAnswerClick(emoji, card));
+        grid.appendChild(card);
+      });
+    }
+
+
+    /* ════════════════════════════════
+       GAME FLOW
+    ════════════════════════════════ */
+
+    function startGame() {
+      hideAllOverlays();
+      sequence    = shuffle(EMOJIS);
+      answerOrder = shuffle(EMOJIS);
+      currentRound   = 1;
+      selectionIndex = 0;
+      resetTimerBar();
+      renderAnsGrid();
+      setTimeout(startRound, 300);
+    }
+
+    function startRound() {
+      gamePhase      = 'reveal';
+      selectionIndex = 0;
+
+      setRoundBadge(currentRound);
+      setStatus(`Watch carefully — ${currentRound === 1 ? '1 card' : currentRound + ' cards'} to remember!`);
+      document.getElementById('ansLabel').textContent = 'Choose below';
+
+      // Reset answer cards: remove correct/wrong, disable all
+      document.querySelectorAll('.ans-card').forEach(c => {
+        c.classList.remove('correct', 'wrong');
+        c.classList.add('disabled');
+      });
+
+      // Rebuild sequence grid for this round
+      renderSeqGrid();
+
+      // Flip the active cards face-up (cards 0 … currentRound-1)
+      for (let i = 0; i < currentRound; i++) {
+        const card = document.getElementById(`seq-${i}`);
+        card.className = 'seq-card face-up';
+        card.innerHTML = `
+          <span class="seq-badge">${i + 1}</span>
+          <span class="emoji">${sequence[i]}</span>
+        `;
+      }
+
+      // Run timer then flip back and hand over to player
+      startTimer(() => {
+        flipSeqFaceDown();
+        gamePhase      = 'select';
+        selectionIndex = 0;
+        enableAnswerCards();
+        setStatus(`Tap the card that was in position 1`);
+        document.getElementById('ansLabel').textContent = 'Tap the cards in order';
+      });
+    }
+
+    function flipSeqFaceDown() {
+      for (let i = 0; i < currentRound; i++) {
+        const card = document.getElementById(`seq-${i}`);
+        card.className = 'seq-card face-down';
+        card.innerHTML = `<span class="pos-number">${i + 1}</span>`;
+      }
+    }
+
+    function enableAnswerCards() {
+      document.querySelectorAll('.ans-card').forEach(c => {
+        if (!c.classList.contains('correct')) {
+          c.classList.remove('disabled');
+        }
+      });
+    }
+
+
+    /* ════════════════════════════════
+       PLAYER INPUT
+    ════════════════════════════════ */
+
+    function handleAnswerClick(emoji, cardEl) {
+      if (gamePhase !== 'select') return;
+      if (cardEl.classList.contains('disabled') || cardEl.classList.contains('correct')) return;
+
+      const expected = sequence[selectionIndex];
+
+      if (emoji === expected) {
+
+        // Mark answer card correct
+        cardEl.classList.add('correct', 'disabled');
+
+        // Flash the matching sequence card green briefly
+        const seqCard = document.getElementById(`seq-${selectionIndex}`);
+        seqCard.className = 'seq-card confirmed';
+        seqCard.innerHTML = `<span class="emoji">${emoji}</span>`;
+        setTimeout(() => {
+          if (gamePhase === 'select') {           // only reset if still in select phase
+            seqCard.className = 'seq-card face-down';
+            seqCard.innerHTML = `<span class="pos-number">${selectionIndex + 1}</span>`;
+          }
+        }, 700);
+
+        selectionIndex++;
+
+        if (selectionIndex === currentRound) {
+          // ── Round complete ──
+          if (currentRound === 8) {
+            gamePhase = 'win';
+            disableAllAnswerCards();
+            setTimeout(showWin, 900);
+          } else {
+            currentRound++;
+            setStatus('Well done! Get ready for the next round...');
+            disableAllAnswerCards();
+            resetTimerBar();
+            setTimeout(startRound, 1800);
+          }
+        } else {
+          setStatus(`Great! Now tap the card in position ${selectionIndex + 1}`);
+        }
+
+      } else {
+
+        // ── Wrong ──
+        cardEl.classList.add('wrong');
+        gamePhase = 'over';
+        disableAllAnswerCards();
+        stopTimer();
+        setTimeout(() => showGameOver(), 900);
+
+      }
+    }
+
+    function disableAllAnswerCards() {
+      document.querySelectorAll('.ans-card').forEach(c => c.classList.add('disabled'));
+    }
+
+
+    /* ════════════════════════════════
+       OVERLAYS
+    ════════════════════════════════ */
+
+    function showGameOver() {
+      resetTimerBar();
+      const reached = currentRound;
+      const msg = reached === 1
+        ? "You were on round 1. Have another go!"
+        : `You made it to round ${reached} — try to go one further next time!`;
+      document.getElementById('gameOverMsg').textContent = msg;
+      document.getElementById('gameOverOverlay').classList.add('visible');
+    }
+
+    function showWin() {
+      resetTimerBar();
+      document.getElementById('winOverlay').classList.add('visible');
+    }
+
+  </script>
+</body>
+</html>
